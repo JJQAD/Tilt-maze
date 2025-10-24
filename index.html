@@ -108,5 +108,32 @@
 
   <!-- App JS (relative path + cache-bust). Ensure app.js defines window.beginGame -->
   <script src="app.js?v=2025-10-24e" onload="window.__replayQueuedBegin && window.__replayQueuedBegin()"></script>
+
+<script>
+window.addEventListener('load', () => {
+  const report = document.createElement('div');
+  report.style.position = 'fixed';
+  report.style.bottom = '0';
+  report.style.left = '0';
+  report.style.right = '0';
+  report.style.background = 'rgba(0,0,0,0.8)';
+  report.style.color = '#0f0';
+  report.style.fontSize = '12px';
+  report.style.padding = '4px';
+  report.style.zIndex = '9999';
+  report.style.fontFamily = 'monospace';
+  document.body.appendChild(report);
+
+  const check = (url, label) => fetch(url, {cache:'no-store'})
+    .then(r => report.innerHTML += `${label}: ${r.status}<br>`)
+    .catch(e => report.innerHTML += `${label}: ERROR<br>`);
+
+  check('styles.css?v=2025-10-24e','CSS');
+  check('app.js?v=2025-10-24e','JS');
+});
+</script>
+
+
 </body>
 </html>
+
