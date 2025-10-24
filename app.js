@@ -125,46 +125,71 @@ function generateMaze(cols, rows){
 
 /* =================== Geometry that fills the screen (rectangular cells) =================== */
 function buildMazeGeometry(){
-  // Choose a target corridor scale, then compute grid counts to fit the screen.
-  const target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36); // px reference
-  // Leave a 1-cell margin around the maze so line caps aren't clipped.
-  gridW = Math.max(8, Math.floor(CAN_W / target) - 2);
-  gridH = Math.max(8, Math.floor(CAN_H / target) - 2);
+  // 1) Choose a *target* cell size from difficulty (unchanged)
+  const target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36);
+  const baseCell = Math.max(18, target - Math.max(0, level-1));
 
-  // Compute rectangular cells so the maze + margins exactly fill the canvas.
-  cellW = CAN_W / (gridW + 2);
-  cellH = CAN_H / (gridH + 2);
+  // 2) Start by sizing to WIDTH with ~1-cell margin on each side
+  //    This locks square cells and ensures we fill width nicely.
+  let gridW = Math.max(8, Math.floor(CAN_W / baseCell) - 2);
+  let cellSize = Math.floor(CAN_W / (gridW + 2));  // ← square cell size from width
 
-  // Visual scale uses the smaller axis so corridors look consistent.
-  PATH_W = Math.floor(Math.min(cellW, cellH) * 0.56);
+  // 3) With that *same* square cell size, compute how many rows fit vertically
+  //    (keeping ~1-cell margin top & bottom)
+  let gridH = Math.max(8, Math.floor(CAN_H / cellSize) - 2);
+
+  // 4) Grow rows to reduce vertical margin while we still fit on screen.
+  //    (Total height used = (gridH + 2) * cellSize. Add rows while adding 1 more still fits.)
+  while ( (gridH + 3) * cellSize <= CAN_H ) gridH++;
+
+  // (Optional) If there’s horizontal slack, you can also grow columns similarly:
+  // while ( (gridW + 3) * cellSize <= CAN_W ) gridW++;
+
+  // 5) Offsets to center the maze (now margins should be small on tall screens)
+  const offsetX = Math.floor((CAN_W - (gridW + 2) * cellSize) / 2);
+  const offsetY = Math.floor((CAN_H - (gridH + 2) * cellSize) / 2);
+
+  // 6) Derive path/ball sizes from the (square) cell size
+  PATH_W = Math.floor(cellSize * 0.56);
   BALL_R = Math.floor(PATH_W * 0.45);
   GOAL_R = Math.floor(BALL_R * 0.5);
 
+  // 7) Generate the maze edges using the new gridW/gridH
   const m = generateMaze(gridW, gridH);
-  startCell = m.start; endCell = m.end;
+  const { start, end } = m;
 
   mazeEdges = [];
-  function cellCenter(i,j){
-    // +1 here gives us a 1-cell margin around the maze (both axes)
-    const x = cellW*(j+1) + cellW/2;
-    const y = cellH*(i+1) + cellH/2;
-    return {x,y};
+  function cellCenter(i, j){
+    const x = cellSize * (j + 1) + cellSize / 2 + offsetX;
+    const y = cellSize * (i + 1) + cellSize / 2 + offsetY;
+    return { x, y };
   }
-  for(let i=0;i<gridH;i++) for(let j=0;j<gridW;j++){
-    for(const [dx,dy] of [[1,0],[0,1]]){ // right & down only
-      const ni=i+dy,nj=j+dx; if(ni>=gridH||nj>=gridW) continue;
-      if(m.passages.has(`${i},${j}-${ni},${nj}`)){
-        const A = cellCenter(i,j), B = cellCenter(ni,nj);
-        mazeEdges.push([A,B]);
+
+  for (let i = 0; i < gridH; i++){
+    for (let j = 0; j < gridW; j++){
+      // draw right & down edges of the passage graph
+      for (const [dx, dy] of [[1,0],[0,1]]) {
+        const ni = i + dy, nj = j + dx;
+        if (ni >= gridH || nj >= gridW) continue;
+        if (m.passages.has(`${i},${j}-${ni},${nj}`)) {
+          const A = cellCenter(i, j), B = cellCenter(ni, nj);
+          mazeEdges.push([A, B]);
+        }
       }
     }
   }
-  startPos = cellCenter(startCell.i, startCell.j);
-  endPos   = cellCenter(endCell.i,   endCell.j);
-  pos = {x:startPos.x, y:startPos.y}; vel={x:0,y:0};
 
+  // 8) Start/goal positions and physics reset
+  startPos = cellCenter(start.i, start.j);
+  endPos   = cellCenter(end.i,   end.j);
+  pos = { x: startPos.x, y: startPos.y };
+  vel = { x: 0, y: 0 };
+  solved = false;
+
+  // 9) Rebuild the collision mask based on the new geometry
   buildCollisionMask();
 }
+
 
 function buildCollisionMask(){
   // Eroded mask for BALL CENTER (prevents edge overlap)
@@ -355,3 +380,4 @@ function updateOrientationGuard(){
   if (window.matchMedia('(orientation: landscape)').matches){ rot.classList.add('show'); }
   else { rot.classList.remove('show'); }
 }
+
