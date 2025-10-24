@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Tilt Maze · JJQAD</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Tilt Maze" />
+  <style>
+    :root{color-scheme:light dark}
+    html,body{height:100dvh;margin:0}
+    body{display:flex;align-items:center;justify-content:center;background:#f5f5f7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    #wrap{position:relative;width:100vw;height:100dvh;display:flex;align-items:center;justify-content:center;touch-action:none}
+    canvas{display:block;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.15)}
+
+    /* Overlays */
+    .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:20;opacity:1;transition:opacity .45s ease}
+    .overlay.fade-out{opacity:0;pointer-events:none}
+    .overlay.hidden{display:none}
+    .card{backdrop-filter:blur(8px);background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:22px 24px;max-width:88%;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.12)}
+    .title{font-weight:800;font-size:1.6rem;letter-spacing:.2px;margin-bottom:6px}
+    .sub{opacity:.75;margin-bottom:14px}
+    .btn{appearance:none;border:0;border-radius:12px;padding:12px 16px;font-weight:700;cursor:pointer;background:#111;color:#fff;margin:6px}
+    .hint{font-size:.92rem;opacity:.8;margin-top:12px}
+    .tiny{font-size:.8rem;opacity:.68;margin-top:6px}
+
+    #rotate{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;z-index:30;text-align:center;padding:20px}
+    #rotate.show{display:flex}
+
+    .debug{position:absolute;left:10px;top:10px;z-index:10;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:12px}
+    .version-tag{position:absolute;right:10px;bottom:8px;z-index:40;font-size:11px;opacity:.6;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+
+    @media (prefers-color-scheme:dark){
+      body{background:#0f1114}
+      .card{background:rgba(20,22,26,.86);color:#eaeef2;border-color:rgba(255,255,255,.1)}
+      .btn{background:#e11d48}
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="splash" class="overlay" aria-hidden="false">
+      <div class="card">
+        <div class="title">Tilt Maze</div>
+        <div class="sub">by JJQAD</div>
+        <button class="btn" id="beginBtn"
+                type="button"
+                style="touch-action:manipulation"
+                onclick="beginGame(event)"
+                ontouchstart="beginGame(event)">
+          Tap to Begin
+        </button>
+        <div class="hint">Tilt your phone to move the ball and solve the maze.</div>
+        <div class="tiny">You'll be asked to allow motion/orientation sensors.</div>
+        <div class="tiny" id="splashVersion"></div>
+      </div>
+    </div>
+
+    <div id="congrats" class="overlay hidden" aria-hidden="true">
+      <div class="card">
+        <div class="title">Congratulations!</div>
+        <div class="sub">Want another?</div>
+        <div>
+          <button class="btn" id="againEasy">Easy</button>
+          <button class="btn" id="againMed">Medium</button>
+          <button class="btn" id="againHard">Hard</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="rotate"><div>Rotate to portrait</div></div>
+    <div id="dbg" class="debug" hidden>debug</div>
+    <div id="verTag" class="version-tag"></div>
+  </div>
+
+  <!-- p5.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- App code -->
+  <script src="./app.js"></script>
+</body>
+</html>
