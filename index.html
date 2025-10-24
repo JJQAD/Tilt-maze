@@ -8,17 +8,21 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tilt Maze" />
 
-  <!-- (Optional) tiny fallback so splash isn't unstyled if styles.css fails to load -->
+  <!-- Inline fallback so the splash is usable even if styles.css is slow/missing -->
   <style>
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:#f5f5f7}
     #wrap{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center}
     .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+    .overlay.hidden{display:none} /* hide elements marked hidden */
+    #congrats{display:none}       /* keep win overlay hidden until JS shows it */
     .card{background:#fff;border:1px solid #eee;border-radius:12px;padding:20px;max-width:90%;text-align:center}
     .btn{appearance:none;border:0;border-radius:10px;padding:12px 16px;font-weight:700;background:#111;color:#fff}
+    .debug{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font-size:12px}
+    .version-tag{position:absolute;right:10px;bottom:8px;font-size:11px;opacity:.6}
   </style>
 
-  <!-- IMPORTANT: relative path, no leading slash; cache-busting query -->
-  <link rel="stylesheet" href="styles.css?v=2025-10-24c" />
+  <!-- External CSS (overrides/extends fallback). Relative path + cache-bust. -->
+  <link rel="stylesheet" href="styles.css?v=2025-10-24d" />
 </head>
 <body>
   <div id="wrap">
@@ -40,7 +44,7 @@
       </div>
     </div>
 
-    <!-- Win overlay -->
+    <!-- Win overlay (must start hidden) -->
     <div id="congrats" class="overlay hidden" aria-hidden="true">
       <div class="card">
         <div class="title">Congratulations!</div>
@@ -63,7 +67,7 @@
 
   <!-- p5.js must load BEFORE app.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <!-- IMPORTANT: relative path, no leading slash; cache-busting query -->
-  <script src="app.js?v=2025-10-24c"></script>
+  <!-- App JS (relative path + cache-bust). Ensure app.js defines window.beginGame -->
+  <script src="app.js?v=2025-10-24d"></script>
 </body>
 </html>
