@@ -1,12 +1,12 @@
-const VERSION = 'v2025-10-24a';
+const VERSION = 'v2025-10-24b-rectfill';
 
 /* =================== Responsive sizing (full-screen) =================== */
 let CAN_W = 400, CAN_H = 700;
 function computeSize(){ CAN_W = window.innerWidth; CAN_H = window.innerHeight; }
 
 /* =================== Game config (scales with level) =================== */
-let cellSize;          // maze cell size (px)
-let PATH_W;            // visual path width
+let cellW, cellH;      // rectangular cell size (px) — fills full screen
+let PATH_W;            // visual path width (px), based on smaller of cellW/cellH
 let BALL_R;            // ball radius
 let GOAL_R;            // goal dot radius (50% of ball)
 let level = 1;
@@ -118,23 +118,25 @@ function generateMaze(cols, rows){
     return dist;
   }
   const s0=0, d0=bfs(s0); let a=0; for(let k=0;k<d0.length;k++) if(d0[k]>d0[a]) a=k;
-  const d1=bfs(a); let b=0; for(let k=0;k<d1.length;k++) if(d1[k]>d0[b]) b=k;
+  const d1=bfs(a); let b=0; for(let k=0;k<d1.length;k++) if(d1[k]>d1[b]) b=k; // (fixed small typo from earlier message)
   const ai=Math.floor(a/W), aj=a%W, bi=Math.floor(b/W), bj=b%W;
   return {passages, start:{i:ai,j:aj}, end:{i:bi,j:bj}, cols:W, rows:H};
 }
 
+/* =================== Geometry that fills the screen (rectangular cells) =================== */
 function buildMazeGeometry(){
-  // difficulty → target cell size (px)
-  const target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36);
-  cellSize = Math.max(18, target - Math.max(0, level-1));
-  gridW = Math.max(8, Math.floor(CAN_W / cellSize) - 2);
-  gridH = Math.max(8, Math.floor(CAN_H / cellSize) - 2);
-  // Refit to fill screen with ~1-cell margin (square cells)
-  cellSize = Math.floor(Math.min(CAN_W / (gridW + 2), CAN_H / (gridH + 2)));
-  const offsetX = Math.floor((CAN_W - (gridW+2)*cellSize)/2);
-  const offsetY = Math.floor((CAN_H - (gridH+2)*cellSize)/2);
+  // Choose a target corridor scale, then compute grid counts to fit the screen.
+  const target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36); // px reference
+  // Leave a 1-cell margin around the maze so line caps aren't clipped.
+  gridW = Math.max(8, Math.floor(CAN_W / target) - 2);
+  gridH = Math.max(8, Math.floor(CAN_H / target) - 2);
 
-  PATH_W = Math.floor(cellSize * 0.56);
+  // Compute rectangular cells so the maze + margins exactly fill the canvas.
+  cellW = CAN_W / (gridW + 2);
+  cellH = CAN_H / (gridH + 2);
+
+  // Visual scale uses the smaller axis so corridors look consistent.
+  PATH_W = Math.floor(Math.min(cellW, cellH) * 0.56);
   BALL_R = Math.floor(PATH_W * 0.45);
   GOAL_R = Math.floor(BALL_R * 0.5);
 
@@ -143,8 +145,9 @@ function buildMazeGeometry(){
 
   mazeEdges = [];
   function cellCenter(i,j){
-    const x = cellSize*(j+1) + cellSize/2 + offsetX;
-    const y = cellSize*(i+1) + cellSize/2 + offsetY;
+    // +1 here gives us a 1-cell margin around the maze (both axes)
+    const x = cellW*(j+1) + cellW/2;
+    const y = cellH*(i+1) + cellH/2;
     return {x,y};
   }
   for(let i=0;i<gridH;i++) for(let j=0;j<gridW;j++){
@@ -164,7 +167,7 @@ function buildMazeGeometry(){
 }
 
 function buildCollisionMask(){
-  // Eroded mask for BALL CENTER (no edge bleed)
+  // Eroded mask for BALL CENTER (prevents edge overlap)
   const cCanvas = document.createElement('canvas');
   cCanvas.width = CAN_W; cCanvas.height = CAN_H;
   const cctx = cCanvas.getContext('2d');
@@ -209,7 +212,7 @@ function setup(){
   setupOrientationGuard();
   window.addEventListener('resize', onResize, {passive:true});
   document.getElementById('splashVersion').textContent = VERSION;
-  document.getElementById('verTag').textContent = VERSION + ' • jjqad.github.io/maze-01/';
+  document.getElementById('verTag')?.append?.(document.createTextNode(VERSION));
 
   // Global safety net: first user gesture anywhere starts the game (for iOS)
   const firstGesture = (ev)=>{ beginGame(ev); cleanup(); };
@@ -285,7 +288,6 @@ function startOrientation(){
 }
 
 /* =================== Splash / Start / Congrats =================== */
-// Global begin handler so inline onclick/ontouchstart works on iOS Safari
 async function beginGame(ev){
   if (started) return;
   started = true;
