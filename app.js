@@ -118,7 +118,7 @@ function generateMaze(cols, rows){
     return dist;
   }
   const s0=0, d0=bfs(s0); let a=0; for(let k=0;k<d0.length;k++) if(d0[k]>d0[a]) a=k;
-  const d1=bfs(a); let b=0; for(let k=0;k<d1.length;k++) if(d1[k]>d1[b]) b=k;
+  const d1=bfs(a); let b=0; for(let k=0;k<d1.length;k++) if(d1[k]>d0[b]) b=k;
   const ai=Math.floor(a/W), aj=a%W, bi=Math.floor(b/W), bj=b%W;
   return {passages, start:{i:ai,j:aj}, end:{i:bi,j:bj}, cols:W, rows:H};
 }
