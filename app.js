@@ -1,117 +1,128 @@
-const VERSION = 'v2025-10-24f';
+// Announce parse success ASAP (lets the badge flip to JS: OK even if later code fails)
+if (typeof window !== 'undefined' && typeof window.__bootJSReady === 'function') {
+  window.__bootJSReady('parse');
+}
 
-/* =================== Responsive sizing (full-screen) =================== */
-let CAN_W = 400, CAN_H = 700;
+var VERSION = 'v2025-10-24g';
+
+// =============== Responsive sizing ===============
+var CAN_W = 400, CAN_H = 700;
 function computeSize(){ CAN_W = window.innerWidth; CAN_H = window.innerHeight; }
 
-/* =================== Game config (scales with level) =================== */
-let cellW, cellH;      // rectangular cell size (px)
-let PATH_W;            // corridor width
-let BALL_R;            // ball radius
-let GOAL_R;            // goal dot radius
-let level = 1;
-let difficulty = 'medium'; // 'easy' | 'medium' | 'hard'
+// =============== Game config ===============
+var cellW, cellH;
+var PATH_W, BALL_R, GOAL_R;
+var level = 1;
+var difficulty = 'medium';
+var GRAVITY = 0.32, FRICTION = 0.992, BOUNCE = 0.25;
+var pos = {x:0,y:0}, vel = {x:0,y:0}, acc = {x:0,y:0};
+var usingOrientation = false, havePermission = false, started = false;
 
-// physics
-const GRAVITY = 0.32;
-const FRICTION = 0.992;
-const BOUNCE = 0.25;
-let pos = {x:0,y:0}, vel = {x:0,y:0}, acc = {x:0,y:0};
-let usingOrientation = false, havePermission = false;
-let started = false;
+// Maze
+var gridW, gridH, mazeEdges = [];
+var startCell, endCell, startPos, endPos;
+var solved = false;
+var centerMask; // collision mask for ball center
 
-// maze
-let gridW, gridH;
-let mazeEdges = [];
-let startCell, endCell;
-let startPos, endPos;
-let solved = false;
-
-// collision mask for BALL CENTER (eroded by BALL_R)
-let centerMask;
-
-/* =================== Utilities =================== */
+// =============== Helpers ===============
 function isIOS(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints>1);
 }
 
-/* =================== Maze generation (Wilson's Algorithm) =================== */
+// =============== Maze generation (Wilson) ===============
 function generateMaze(cols, rows){
-  const H=rows, W=cols;
-  const inTree = Array.from({length:H},()=>Array(W).fill(false));
-  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-  const neighbors = (i,j)=>{
-    const out=[]; for(const [dx,dy] of dirs){
-      const ni=i+dy, nj=j+dx;
-      if(ni>=0&&nj>=0&&ni<H&&nj<W) out.push([ni,nj]);
-    } return out;
-  };
-  const si = Math.floor(Math.random()*H), sj=Math.floor(Math.random()*W);
+  var H = rows, W = cols;
+  var inTree = Array.from({length:H}, function(){ return Array(W).fill(false); });
+  var dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  function neighbors(i,j){
+    var out=[], k, ni, nj, d;
+    for(k=0;k<dirs.length;k++){
+      d = dirs[k]; ni=i+d[1]; nj=j+d[0];
+      if(ni>=0 && nj>=0 && ni<H && nj<W) out.push([ni,nj]);
+    }
+    return out;
+  }
+  var si = Math.floor(Math.random()*H), sj=Math.floor(Math.random()*W);
   inTree[si][sj]=true;
-  const parent = Array.from({length:H},()=>Array(W).fill(null));
-  const total = H*W; let added = 1;
+  var parent = Array.from({length:H}, function(){ return Array(W).fill(null); });
+  var total = H*W, added = 1;
 
   while(added < total){
-    let ui, uj;
-    do { ui=Math.floor(Math.random()*H); uj=Math.floor(Math.random()*W);} while(inTree[ui][uj]);
-    const path=[]; const index=new Map();
-    let ci=ui, cj=uj; path.push([ci,cj]); index.set(ci+','+cj,0);
+    var ui, uj;
+    do { ui=Math.floor(Math.random()*H); uj=Math.floor(Math.random()*W); } while(inTree[ui][uj]);
+    var path=[], index={}, key, cut;
+    var ci=ui, cj=uj; path.push([ci,cj]); index[ci+','+cj]=0;
     while(!inTree[ci][cj]){
-      const opts = neighbors(ci,cj);
-      const [ni,nj] = opts[Math.floor(Math.random()*opts.length)];
-      const key = ni+','+nj;
-      if(index.has(key)){
-        const cut = index.get(key); path.length = cut+1;
-      } else { path.push([ni,nj]); index.set(key, path.length-1); }
+      var opts = neighbors(ci,cj);
+      var pick = opts[Math.floor(Math.random()*opts.length)];
+      var ni=pick[0], nj=pick[1];
+      key = ni+','+nj;
+      if(index.hasOwnProperty(key)){
+        cut = index[key]; path.length = cut+1;
+      } else {
+        path.push([ni,nj]); index[key] = path.length-1;
+      }
       ci=ni; cj=nj;
     }
-    for(let k=0;k<path.length-1;k++){
-      const [a1,b1]=path[k], [a2,b2]=path[k+1];
+    for(var k=0;k<path.length-1;k++){
+      var a1=path[k][0], b1=path[k][1], a2=path[k+1][0], b2=path[k+1][1];
       if(!inTree[a1][b1]){ inTree[a1][b1]=true; added++; parent[a1][b1]=a2+','+b2; }
       if(!inTree[a2][b2]){ inTree[a2][b2]=true; added++; parent[a2][b2]=a1+','+b1; }
     }
   }
 
-  const passages = new Set();
-  for(let i=0;i<H;i++) for(let j=0;j<W;j++){
-    const p = parent[i][j]; if(!p) continue; const [pi,pj]=p.split(',').map(Number);
-    const a=`${i},${j}`, b=`${pi},${pj}`; passages.add(a+"-"+b); passages.add(b+"-"+a);
+  var passages = new Set();
+  for(var i=0;i<H;i++) for(var j=0;j<W;j++){
+    var p = parent[i][j]; if(!p) continue;
+    var pi=parseInt(p.split(',')[0],10), pj=parseInt(p.split(',')[1],10);
+    var a=i+','+j, b=pi+','+pj; passages.add(a+'-'+b); passages.add(b+'-'+a);
   }
 
   function cellToIdx(i,j){ return i*W + j; }
-  const adj = Array.from({length:H*W},()=>[]);
-  for(let i=0;i<H;i++)for(let j=0;j<W;j++){
-    const id=cellToIdx(i,j);
-    for(const [dx,dy] of [[1,0],[0,1],[-1,0],[0,-1]]){
-      const ni=i+dy,nj=j+dx; if(ni<0||nj<0||ni>=H||nj>=W) continue;
-      if(passages.has(`${i},${j}-${ni},${nj}`)) adj[id].push(cellToIdx(ni,nj));
+  var adj = Array.from({length:H*W}, function(){ return []; });
+  for(i=0;i<H;i++) for(j=0;j<W;j++){
+    var id = cellToIdx(i,j);
+    var dlist = [[1,0],[0,1],[-1,0],[0,-1]];
+    for(var d=0; d<dlist.length; d++){
+      var dx=dlist[d][0], dy=dlist[d][1];
+      var ni=i+dy, nj=j+dx;
+      if(ni<0||nj<0||ni>=H||nj>=W) continue;
+      if(passages.has(i+','+j+'-'+ni+','+nj)) adj[id].push(cellToIdx(ni,nj));
     }
   }
   function bfs(start){
-    const dist=Array(H*W).fill(Infinity); dist[start]=0; const q=[start];
-    while(q.length){ const v=q.shift(); for(const w of adj[v]) if(dist[w]===Infinity){ dist[w]=dist[v]+1; q.push(w);} }
+    var dist=Array(H*W).fill(Infinity); dist[start]=0; var q=[start];
+    while(q.length){
+      var v=q.shift();
+      for(var wIdx=0; wIdx<adj[v].length; wIdx++){
+        var w=adj[v][wIdx];
+        if(dist[w]===Infinity){ dist[w]=dist[v]+1; q.push(w); }
+      }
+    }
     return dist;
   }
-  const s0=0, d0=bfs(s0); let a=0; for(let k=0;k<d0.length;k++) if(d0[k]>d0[a]) a=k;
-  const d1=bfs(a); let b=0; for(let k=0;k<d1.length;k++) if(d1[k]>d1[b]) b=k;
-  const ai=Math.floor(a/W), aj=a%W, bi=Math.floor(b/W), bj=b%W;
-  return {passages, start:{i:ai,j:aj}, end:{i:bi,j:bj}, cols:W, rows:H};
+  var s0=0, d0=bfs(s0), a=0;
+  for(var k2=0;k2<d0.length;k2++) if(d0[k2]>d0[a]) a=k2;
+  var d1=bfs(a), b=0;
+  for(k2=0;k2<d1.length;k2++) if(d1[k2]>d1[b]) b=k2;
+  var ai=Math.floor(a/W), aj=a%W, bi=Math.floor(b/W), bj=b%W;
+  return {passages:passages, start:{i:ai,j:aj}, end:{i:bi,j:bj}, cols:W, rows:H};
 }
 
-/* =============== Geometry: fill the canvas with minimal pixel margins =============== */
+// =============== Geometry: fill canvas with minimal pixel margins ===============
 function buildMazeGeometry(){
-  const target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36); // px-ish
+  var target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36);
 
   gridW = Math.max(8, Math.floor(CAN_W / target));
   gridH = Math.max(8, Math.floor(CAN_H / target));
 
-  let provisionalCellW = CAN_W / gridW;
-  let provisionalCellH = CAN_H / gridH;
+  var provisionalCellW = CAN_W / gridW;
+  var provisionalCellH = CAN_H / gridH;
   PATH_W = Math.floor(Math.min(provisionalCellW, provisionalCellH) * 0.56);
-  const margin = Math.ceil(PATH_W/2) + 2;
-  const usableW = CAN_W - margin*2;
-  const usableH = CAN_H - margin*2;
+  var margin = Math.ceil(PATH_W/2) + 2;
+  var usableW = CAN_W - margin*2;
+  var usableH = CAN_H - margin*2;
 
   cellW = usableW / gridW;
   cellH = usableH / gridH;
@@ -120,20 +131,22 @@ function buildMazeGeometry(){
   BALL_R = Math.floor(PATH_W * 0.45);
   GOAL_R = Math.floor(BALL_R * 0.5);
 
-  const m = generateMaze(gridW, gridH);
+  var m = generateMaze(gridW, gridH);
   startCell = m.start; endCell = m.end;
 
   mazeEdges = [];
   function cellCenter(i,j){
-    const x = margin + cellW*j + cellW/2;
-    const y = margin + cellH*i + cellH/2;
-    return {x,y};
+    var x = margin + cellW*j + cellW/2;
+    var y = margin + cellH*i + cellH/2;
+    return {x:x,y:y};
   }
-  for(let i=0;i<gridH;i++) for(let j=0;j<gridW;j++){
-    for(const [dx,dy] of [[1,0],[0,1]]){ // right & down only
-      const ni=i+dy,nj=j+dx; if(ni>=gridH||nj>=gridW) continue;
-      if(m.passages.has(`${i},${j}-${ni},${nj}`)){
-        const A = cellCenter(i,j), B = cellCenter(ni,nj);
+  for(var i=0;i<gridH;i++) for(var j=0;j<gridW;j++){
+    var neigh = [[1,0],[0,1]];
+    for(var nd=0; nd<neigh.length; nd++){
+      var dx=neigh[nd][0], dy=neigh[nd][1];
+      var ni=i+dy, nj=j+dx; if(ni>=gridH||nj>=gridW) continue;
+      if(m.passages.has(i+','+j+'-'+ni+','+nj)){
+        var A = cellCenter(i,j), B = cellCenter(ni,nj);
         mazeEdges.push([A,B]);
       }
     }
@@ -146,31 +159,35 @@ function buildMazeGeometry(){
 }
 
 function buildCollisionMask(){
-  const cCanvas = document.createElement('canvas');
+  var cCanvas = document.createElement('canvas');
   cCanvas.width = CAN_W; cCanvas.height = CAN_H;
-  const cctx = cCanvas.getContext('2d');
+  var cctx = cCanvas.getContext('2d');
   cctx.clearRect(0,0,CAN_W,CAN_H);
   cctx.fillStyle='#000'; cctx.fillRect(0,0,CAN_W,CAN_H);
   cctx.lineCap='round'; cctx.lineJoin='round';
-  const eroded = Math.max(1, PATH_W - 2*BALL_R + 2);
+  var eroded = Math.max(1, PATH_W - 2*BALL_R + 2);
   cctx.lineWidth = eroded; cctx.strokeStyle='#fff';
-  for(const [A,B] of mazeEdges){
+  for(var e=0;e<mazeEdges.length;e++){
+    var A=mazeEdges[e][0], B=mazeEdges[e][1];
     cctx.beginPath(); cctx.moveTo(A.x, A.y); cctx.lineTo(B.x, B.y); cctx.stroke();
   }
   centerMask = cctx.getImageData(0,0,CAN_W,CAN_H).data;
 }
 
 function pointInsideCenterMask(x,y){
-  const ix = Math.max(0, Math.min(CAN_W-1, Math.round(x)));
-  const iy = Math.max(0, Math.min(CAN_H-1, Math.round(y)));
+  var ix = Math.max(0, Math.min(CAN_W-1, Math.round(x)));
+  var iy = Math.max(0, Math.min(CAN_H-1, Math.round(y)));
   return centerMask[(iy*CAN_W + ix)*4] > 127;
 }
 
-/* =================== Rendering =================== */
+// =============== Rendering ===============
 function drawPaths(ctx){
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,CAN_W,CAN_H);
   ctx.lineCap='round'; ctx.lineJoin='round'; ctx.lineWidth=PATH_W; ctx.strokeStyle='#d7d7db';
-  for(const [A,B] of mazeEdges){ ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke(); }
+  for(var e=0;e<mazeEdges.length;e++){
+    var A=mazeEdges[e][0], B=mazeEdges[e][1];
+    ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke();
+  }
 }
 function drawGoal(ctx){
   ctx.fillStyle='#f59e0b';
@@ -181,30 +198,30 @@ function drawBall(ctx){
   ctx.beginPath(); ctx.arc(pos.x, pos.y, BALL_R, 0, Math.PI*2); ctx.fill();
 }
 
-/* =================== p5 Sketch =================== */
+// =============== p5 Sketch ===============
 function setup(){
   computeSize();
-  const c = createCanvas(CAN_W, CAN_H); c.parent('wrap');
-  pixelDensity(Math.min(2, window.devicePixelRatio||1));
+  var c = createCanvas(CAN_W, CAN_H); c.parent('wrap');
+  pixelDensity(Math.min(2, (window.devicePixelRatio||1)));
   initSplash();
   setupOrientationGuard();
   window.addEventListener('resize', onResize, {passive:true});
-  document.getElementById('splashVersion').textContent = VERSION;
-  const vt = document.getElementById('verTag'); if(vt) vt.textContent = VERSION;
+  var sv = document.getElementById('splashVersion'); if(sv) sv.textContent = VERSION;
+  var vt = document.getElementById('verTag'); if(vt) vt.textContent = VERSION;
 
-  // Global safety net: first gesture anywhere starts the game (for iOS)
-  const firstGesture = (ev)=>{ beginGame(ev); cleanup(); };
-  const cleanup = ()=>{
-    document.removeEventListener('touchstart', firstGesture, {capture:true});
-    document.removeEventListener('pointerdown', firstGesture, {capture:true});
-    document.removeEventListener('mousedown', firstGesture, {capture:true});
-  };
-  document.addEventListener('touchstart', firstGesture, {capture:true, passive:false});
-  document.addEventListener('pointerdown', firstGesture, {capture:true});
-  document.addEventListener('mousedown', firstGesture, {capture:true});
+  // First gesture fallback (iOS)
+  function firstGesture(ev){ beginGame(ev); cleanup(); }
+  function cleanup(){
+    document.removeEventListener('touchstart', firstGesture, true);
+    document.removeEventListener('pointerdown', firstGesture, true);
+    document.removeEventListener('mousedown', firstGesture, true);
+  }
+  document.addEventListener('touchstart', firstGesture, true);
+  document.addEventListener('pointerdown', firstGesture, true);
+  document.addEventListener('mousedown', firstGesture, true);
 
-  // Tell index.html that JS is alive (updates boot badge)
-  if (typeof window.__bootJSReady === 'function') window.__bootJSReady(''+VERSION);
+  // Announce full boot
+  if (typeof window.__bootJSReady === 'function') window.__bootJSReady('boot');
 }
 
 function onResize(){
@@ -213,49 +230,48 @@ function onResize(){
 }
 
 function draw(){
-  const ctx = this.drawingContext;
+  var ctx = this.drawingContext;
   if(!centerMask){ ctx.fillStyle='#fff'; ctx.fillRect(0,0,CAN_W,CAN_H); return; }
   drawPaths(ctx);
   drawGoal(ctx);
 
-  // physics
-  let ax=0, ay=0; if(usingOrientation){ ax+=acc.x; ay+=acc.y; }
+  var ax=0, ay=0; if(usingOrientation){ ax+=acc.x; ay+=acc.y; }
   vel.x = (vel.x + ax) * FRICTION; vel.y = (vel.y + ay) * FRICTION;
-  let nx = pos.x + vel.x, ny = pos.y + vel.y;
+  var nx = pos.x + vel.x, ny = pos.y + vel.y;
   if(pointInsideCenterMask(nx,ny)){
     pos.x = nx; pos.y = ny;
   } else {
-    const tryX = pointInsideCenterMask(pos.x + vel.x, pos.y);
-    const tryY = pointInsideCenterMask(pos.x, pos.y + vel.y);
+    var tryX = pointInsideCenterMask(pos.x + vel.x, pos.y);
+    var tryY = pointInsideCenterMask(pos.x, pos.y + vel.y);
     if(tryX) pos.x += vel.x; else vel.x *= -BOUNCE;
     if(tryY) pos.y += vel.y; else vel.y *= -BOUNCE;
   }
 
   drawBall(ctx);
 
-  // goal check
-  const d = Math.hypot(pos.x-endPos.x, pos.y-endPos.y);
+  var d = Math.hypot(pos.x-endPos.x, pos.y-endPos.y);
   if(!solved && d < GOAL_R*0.9){ solved = true; showCongrats(); }
 }
 
-/* =================== Device Orientation =================== */
+// =============== Device Orientation ===============
 function handleOrientation(e){
-  const g = e.gamma ?? 0; const b = e.beta ?? 0;
+  var g = (typeof e.gamma === 'number') ? e.gamma : 0;
+  var b = (typeof e.beta  === 'number') ? e.beta  : 0;
   acc.x = GRAVITY * Math.sin(g*Math.PI/180);
   acc.y = GRAVITY * Math.sin(b*Math.PI/180);
 }
 async function askPermission(){
   try{
-    let granted = false;
+    var granted = false;
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      const p1 = await DeviceOrientationEvent.requestPermission();
+      var p1 = await DeviceOrientationEvent.requestPermission();
       if (p1 === 'granted'){ window.addEventListener('deviceorientation', handleOrientation, true); granted = true; }
     } else {
       window.addEventListener('deviceorientation', handleOrientation, true);
       granted = true;
     }
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
-      try { await DeviceMotionEvent.requestPermission(); } catch {}
+      try { await DeviceMotionEvent.requestPermission(); } catch(_){}
     }
     if (granted){ havePermission = true; usingOrientation = true; }
   }catch(err){ console.warn('Permission error', err); }
@@ -265,12 +281,12 @@ function startOrientation(){
   usingOrientation = true;
 }
 
-/* =================== Splash / Start / Congrats =================== */
+// =============== Splash / Start / Congrats ===============
 async function beginGame(ev){
   if (started) return;
   started = true;
-  try { ev?.preventDefault?.(); ev?.stopPropagation?.(); } catch {}
-  const needsPerm = isIOS()
+  try { if(ev && ev.preventDefault) ev.preventDefault(); if(ev && ev.stopPropagation) ev.stopPropagation(); } catch(_){}
+  var needsPerm = isIOS()
     && typeof DeviceOrientationEvent !== 'undefined'
     && typeof DeviceOrientationEvent.requestPermission === 'function';
   try{
@@ -278,72 +294,83 @@ async function beginGame(ev){
     else { startOrientation(); }
   } catch(e){ console.warn('permission error', e); }
   buildMazeGeometry();
-  const splash = document.getElementById('splash');
-  splash.classList.add('fade-out');
-  splash.setAttribute('aria-hidden','true');
+  var splash = document.getElementById('splash');
+  if (splash){
+    splash.classList.add('fade-out');
+    splash.setAttribute('aria-hidden','true');
+  }
 }
 window.beginGame = beginGame;
 
 function initSplash(){
-  const splash = document.getElementById('splash');
-  const btn = document.getElementById('beginBtn');
+  var splash = document.getElementById('splash');
+  var btn = document.getElementById('beginBtn');
 
-  const needsPerm = isIOS()
+  var needsPerm = isIOS()
     && typeof DeviceOrientationEvent !== 'undefined'
     && typeof DeviceOrientationEvent.requestPermission === 'function';
 
-  const startNow = async (e)=>{
+  async function startNow(e){
     if (started) return;
     started = true;
-    try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
+    try { if(e && e.preventDefault) e.preventDefault(); if(e && e.stopPropagation) e.stopPropagation(); } catch(_){}
     try{
       if (needsPerm) { await askPermission(); }
       else { startOrientation(); }
     } catch(err){ console.warn('permission error', err); }
     buildMazeGeometry();
-    splash.classList.add('fade-out');
-    splash.setAttribute('aria-hidden','true');
-  };
+    if (splash){
+      splash.classList.add('fade-out');
+      splash.setAttribute('aria-hidden','true');
+    }
+  }
 
   if (btn){
     btn.addEventListener('click',      startNow, {once:true, passive:false});
     btn.addEventListener('touchstart', startNow, {once:true, passive:false});
     btn.addEventListener('pointerdown',startNow, {once:true, passive:false});
   }
-  const bgStart = (e)=>{ if (e.target===splash) startNow(e); };
-  splash.addEventListener('click',       bgStart, {passive:false, once:true});
-  splash.addEventListener('touchstart',  bgStart, {passive:false, once:true});
-  splash.addEventListener('pointerdown', bgStart, {passive:false, once:true});
+  if (splash){
+    function bgStart(e){ if (e && e.target === splash) startNow(e); }
+    splash.addEventListener('click',       bgStart, {passive:false, once:true});
+    splash.addEventListener('touchstart',  bgStart, {passive:false, once:true});
+    splash.addEventListener('pointerdown', bgStart, {passive:false, once:true});
+  }
 }
 
 function showCongrats(){
-  const cg = document.getElementById('congrats');
+  var cg = document.getElementById('congrats');
+  if(!cg) return;
   cg.classList.remove('hidden');
   cg.classList.remove('fade-out');
   cg.setAttribute('aria-hidden','false');
-  const hook = (d)=>()=>{
-    difficulty = d; level = 1;
-    cg.classList.add('fade-out');
-    cg.addEventListener('transitionend', ()=>{
-      cg.classList.add('hidden');
-      cg.setAttribute('aria-hidden','true');
-      buildMazeGeometry(); solved=false;
-    }, {once:true});
-  };
-  document.getElementById('againEasy').onclick = hook('easy');
-  document.getElementById('againMed').onclick  = hook('medium');
-  document.getElementById('againHard').onclick = hook('hard');
+  function hook(d){
+    return function(){
+      difficulty = d; level = 1;
+      cg.classList.add('fade-out');
+      cg.addEventListener('transitionend', function(){
+        cg.classList.add('hidden');
+        cg.setAttribute('aria-hidden','true');
+        buildMazeGeometry(); solved=false;
+      }, {once:true});
+    };
+  }
+  var eBtn=document.getElementById('againEasy'), mBtn=document.getElementById('againMed'), hBtn=document.getElementById('againHard');
+  if(eBtn) eBtn.onclick = hook('easy');
+  if(mBtn) mBtn.onclick = hook('medium');
+  if(hBtn) hBtn.onclick = hook('hard');
 }
 
-/* =================== Portrait guard =================== */
-let mql;
+// =============== Portrait guard ===============
+var mql;
 function setupOrientationGuard(){
   mql = window.matchMedia('(orientation: landscape)');
-  mql.addEventListener('change', updateOrientationGuard);
+  if (mql && mql.addEventListener) mql.addEventListener('change', updateOrientationGuard);
   updateOrientationGuard();
 }
 function updateOrientationGuard(){
-  const rot = document.getElementById('rotate');
+  var rot = document.getElementById('rotate');
+  if (!rot) return;
   if (window.matchMedia('(orientation: landscape)').matches){ rot.classList.add('show'); }
   else { rot.classList.remove('show'); }
 }

@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tilt Maze" />
 
-  <!-- Inline fallback so the splash is usable even if styles.css 404s -->
+  <!-- Minimal fallback so splash is usable even if styles.css 404s -->
   <style>
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:#f5f5f7}
     #wrap{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -19,13 +19,13 @@
     .btn{appearance:none;border:0;border-radius:10px;padding:12px 16px;font-weight:700;background:#111;color:#fff}
     .debug{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font-size:12px}
     .version-tag{position:absolute;right:10px;bottom:8px;font-size:11px;opacity:.6}
-    /* Tiny boot badge always visible for mobile debugging */
-    #bootBadge{position:fixed;left:8px;top:8px;z-index:99999;background:rgba(0,0,0,.8);color:#0f0;
+    /* Always-visible boot badge for mobile debugging */
+    #bootBadge{position:fixed;left:8px;top:8px;z-index:99999;background:rgba(0,0,0,.85);color:#0f0;
       font:12px/1.2 ui-monospace,monospace;border-radius:8px;padding:6px 8px;pointer-events:none}
   </style>
 
-  <!-- External CSS (make sure this file exists as 'styles.css' in repo root) -->
-  <link rel="stylesheet" href="styles.css?v=2025-10-24f" />
+  <!-- External CSS (must exist as 'styles.css' in repo root) -->
+  <link rel="stylesheet" href="styles.css?v=2025-10-24g" />
 </head>
 <body>
   <div id="wrap">
@@ -64,56 +64,49 @@
     <div id="verTag" class="version-tag"></div>
   </div>
 
-  <!-- Always-visible boot badge (shows CSS/JS load status; remove later if desired) -->
-  <div id="bootBadge">CSS: checking…<br>JS: waiting…</div>
+  <!-- Boot badge -->
+  <div id="bootBadge">CSS: checking…<br>JS: loading…</div>
 
   <!-- p5.js must load BEFORE app.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- App JS (ensure this file exists as 'app.js' in repo root) -->
-  <script src="app.js?v=2025-10-24f" defer></script>
+  <!-- App JS (must exist as 'app.js' in repo root). onload/onerror update the badge even if parsing fails -->
+  <script src="app.js?v=2025-10-24g"
+          onload="(function(){var b=document.getElementById('bootBadge'); if(b){ b.innerHTML=b.innerHTML.replace('JS: loading…','JS: loaded'); }})()"
+          onerror="(function(){var b=document.getElementById('bootBadge'); if(b){ b.innerHTML=b.innerHTML.replace('JS: loading…','JS: ERROR (load)'); }})()"
+          defer></script>
 
-  <!-- Tiny bootstrap to update boot badge & replay tap if JS is slow -->
+  <!-- Boot helpers: check CSS status; watchdog fetch for JS if onerror didn't fire -->
   <script>
     (function(){
-      const badge = document.getElementById('bootBadge');
-      // Check CSS by fetching it (works on iPhone too)
-      fetch('styles.css?v=2025-10-24f', {cache:'no-store'})
-        .then(r => badge.innerHTML = `CSS: ${r.status} ${r.ok?'OK':'ERROR'}<br>JS: loading…`)
-        .catch(()=> badge.innerHTML = `CSS: ERROR<br>JS: loading…`);
+      var b = document.getElementById('bootBadge');
+      // Report CSS fetch status (works on iPhone)
+      try {
+        fetch('styles.css?v=2025-10-24g', {cache:'no-store'}).then(function(r){
+          if (b) b.innerHTML = 'CSS: ' + r.status + (r.ok?' OK':' ERROR') + '<br>' + (b.innerHTML.split('<br>')[1]||'JS: loading…');
+        }).catch(function(){ if (b) b.innerHTML = 'CSS: ERROR<br>JS: loading…'; });
+      } catch(_){}
 
-      // If user taps before app.js is ready, queue it
-      function queueStart(ev){
-        try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){}
-        window.__queuedBegin = true;
-        if (typeof window.beginGame === 'function') {
-          try { window.beginGame(ev); } catch(e){ console.warn('beginGame err (pre-app):', e); }
+      // If app.js never calls __bootJSReady within ~3s, fetch it to see its status
+      setTimeout(function(){
+        if (!window.__jsAnnounced) {
+          try {
+            fetch('app.js?v=2025-10-24g', {cache:'no-store'})
+              .then(function(r){
+                if (b) b.innerHTML = (b.innerHTML.split('<br>')[0]||'CSS:?') + '<br>JS: ' + r.status + (r.ok?' OK (fetch)':' ERROR');
+              })
+              .catch(function(){ if (b) b.innerHTML = (b.innerHTML.split('<br>')[0]||'CSS:?') + '<br>JS: ERROR (fetch)'; });
+          } catch(_){}
         }
-      }
-      document.addEventListener('DOMContentLoaded', function(){
-        const btn = document.getElementById('beginBtn');
-        const splash = document.getElementById('splash');
-        if(btn){
-          btn.addEventListener('click', queueStart, {passive:false});
-          btn.addEventListener('touchstart', queueStart, {passive:false});
-          btn.addEventListener('pointerdown', queueStart, {passive:false});
-        }
-        if(splash){
-          const bg = (e)=>{ if(e.target===splash) queueStart(e); };
-          splash.addEventListener('click', bg, {passive:false});
-          splash.addEventListener('touchstart', bg, {passive:false});
-          splash.addEventListener('pointerdown', bg, {passive:false});
-        }
-      });
+      }, 3000);
 
-      // Called by app.js when loaded
-      window.__bootJSReady = function(verText){
-        const badge = document.getElementById('bootBadge');
-        if (badge) badge.innerHTML = (badge.innerHTML.split('<br>')[0]||'') + `<br>JS: OK ${verText||''}`;
-        if (window.__queuedBegin && typeof window.beginGame === 'function'){
-          try { window.beginGame(); } catch(e){ console.warn('beginGame err (replay):', e); }
-          window.__queuedBegin = false;
-        }
+      // Called by app.js on first line (parse success) and again when fully booted
+      window.__bootJSReady = function(phase){
+        window.__jsAnnounced = true;
+        if (!b) return;
+        var lines = b.innerHTML.split('<br>');
+        lines[1] = 'JS: OK ' + (phase || '');
+        b.innerHTML = lines.join('<br>');
       };
     })();
   </script>
