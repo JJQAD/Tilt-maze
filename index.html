@@ -8,21 +8,24 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tilt Maze" />
 
-  <!-- Inline fallback so the splash is usable even if styles.css is slow/missing -->
+  <!-- Inline fallback so the splash is usable even if styles.css 404s -->
   <style>
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:#f5f5f7}
     #wrap{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center}
     .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-    .overlay.hidden{display:none} /* hide elements marked hidden */
-    #congrats{display:none}       /* keep win overlay hidden until JS shows it */
+    .overlay.hidden{display:none}
+    #congrats{display:none}
     .card{background:#fff;border:1px solid #eee;border-radius:12px;padding:20px;max-width:90%;text-align:center}
     .btn{appearance:none;border:0;border-radius:10px;padding:12px 16px;font-weight:700;background:#111;color:#fff}
     .debug{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font-size:12px}
     .version-tag{position:absolute;right:10px;bottom:8px;font-size:11px;opacity:.6}
+    /* Tiny boot badge always visible for mobile debugging */
+    #bootBadge{position:fixed;left:8px;top:8px;z-index:99999;background:rgba(0,0,0,.8);color:#0f0;
+      font:12px/1.2 ui-monospace,monospace;border-radius:8px;padding:6px 8px;pointer-events:none}
   </style>
 
-  <!-- External CSS (overrides/extends fallback). Relative path + cache-bust. -->
-  <link rel="stylesheet" href="styles.css?v=2025-10-24e" />
+  <!-- External CSS (make sure this file exists as 'styles.css' in repo root) -->
+  <link rel="stylesheet" href="styles.css?v=2025-10-24f" />
 </head>
 <body>
   <div id="wrap">
@@ -31,9 +34,9 @@
       <div class="card">
         <div class="title">Tilt Maze</div>
         <div class="sub">by JJQAD</div>
-       <button class="btn" id="beginBtn" type="button" style="touch-action:manipulation">
-  Tap to Begin
-</button>
+        <button class="btn" id="beginBtn" type="button" style="touch-action:manipulation">
+          Tap to Begin
+        </button>
         <div class="hint">Tilt your phone to move the ball and solve the maze.</div>
         <div class="tiny">You'll be asked to allow motion/orientation sensors.</div>
         <div class="tiny" id="splashVersion"></div>
@@ -61,76 +64,58 @@
     <div id="verTag" class="version-tag"></div>
   </div>
 
-  <!-- BOOTSTRAP: capture first user tap/click and replay once app.js is ready -->
+  <!-- Always-visible boot badge (shows CSS/JS load status; remove later if desired) -->
+  <div id="bootBadge">CSS: checking…<br>JS: waiting…</div>
+
+  <!-- p5.js must load BEFORE app.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <!-- App JS (ensure this file exists as 'app.js' in repo root) -->
+  <script src="app.js?v=2025-10-24f" defer></script>
+
+  <!-- Tiny bootstrap to update boot badge & replay tap if JS is slow -->
   <script>
     (function(){
-      // Record a "start requested" flag if the user taps before app.js is ready.
-      function requestStart(ev){
+      const badge = document.getElementById('bootBadge');
+      // Check CSS by fetching it (works on iPhone too)
+      fetch('styles.css?v=2025-10-24f', {cache:'no-store'})
+        .then(r => badge.innerHTML = `CSS: ${r.status} ${r.ok?'OK':'ERROR'}<br>JS: loading…`)
+        .catch(()=> badge.innerHTML = `CSS: ERROR<br>JS: loading…`);
+
+      // If user taps before app.js is ready, queue it
+      function queueStart(ev){
         try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){}
         window.__queuedBegin = true;
         if (typeof window.beginGame === 'function') {
-          // If app.js is already there, go now.
-          try { window.beginGame(ev); } catch(e){ console.warn('beginGame error (pre-app hook):', e); }
+          try { window.beginGame(ev); } catch(e){ console.warn('beginGame err (pre-app):', e); }
         }
       }
-      // Attach to the button and splash background ASAP.
       document.addEventListener('DOMContentLoaded', function(){
-        var btn = document.getElementById('beginBtn');
-        var splash = document.getElementById('splash');
-        if (btn){
-          btn.addEventListener('click', requestStart, {passive:false});
-          btn.addEventListener('touchstart', requestStart, {passive:false});
-          btn.addEventListener('pointerdown', requestStart, {passive:false});
+        const btn = document.getElementById('beginBtn');
+        const splash = document.getElementById('splash');
+        if(btn){
+          btn.addEventListener('click', queueStart, {passive:false});
+          btn.addEventListener('touchstart', queueStart, {passive:false});
+          btn.addEventListener('pointerdown', queueStart, {passive:false});
         }
-        if (splash){
-          splash.addEventListener('click', function(e){ if(e.target===splash) requestStart(e); }, {passive:false});
-          splash.addEventListener('touchstart', function(e){ if(e.target===splash) requestStart(e); }, {passive:false});
-          splash.addEventListener('pointerdown', function(e){ if(e.target===splash) requestStart(e); }, {passive:false});
+        if(splash){
+          const bg = (e)=>{ if(e.target===splash) queueStart(e); };
+          splash.addEventListener('click', bg, {passive:false});
+          splash.addEventListener('touchstart', bg, {passive:false});
+          splash.addEventListener('pointerdown', bg, {passive:false});
         }
       });
 
-      // After app.js loads, if a tap already happened, replay it.
-      window.__replayQueuedBegin = function(){
+      // Called by app.js when loaded
+      window.__bootJSReady = function(verText){
+        const badge = document.getElementById('bootBadge');
+        if (badge) badge.innerHTML = (badge.innerHTML.split('<br>')[0]||'') + `<br>JS: OK ${verText||''}`;
         if (window.__queuedBegin && typeof window.beginGame === 'function'){
-          try { window.beginGame(); } catch(e){ console.warn('beginGame error (replay):', e); }
+          try { window.beginGame(); } catch(e){ console.warn('beginGame err (replay):', e); }
           window.__queuedBegin = false;
         }
       };
     })();
   </script>
-
-  <!-- p5.js must load BEFORE app.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
-  <!-- App JS (relative path + cache-bust). Ensure app.js defines window.beginGame -->
-  <script src="app.js?v=2025-10-24e" onload="window.__replayQueuedBegin && window.__replayQueuedBegin()"></script>
-
-<script>
-window.addEventListener('load', () => {
-  const report = document.createElement('div');
-  report.style.position = 'fixed';
-  report.style.bottom = '0';
-  report.style.left = '0';
-  report.style.right = '0';
-  report.style.background = 'rgba(0,0,0,0.8)';
-  report.style.color = '#0f0';
-  report.style.fontSize = '12px';
-  report.style.padding = '4px';
-  report.style.zIndex = '9999';
-  report.style.fontFamily = 'monospace';
-  document.body.appendChild(report);
-
-  const check = (url, label) => fetch(url, {cache:'no-store'})
-    .then(r => report.innerHTML += `${label}: ${r.status}<br>`)
-    .catch(e => report.innerHTML += `${label}: ERROR<br>`);
-
-  check('styles.css?v=2025-10-24e','CSS');
-  check('app.js?v=2025-10-24e','JS');
-});
-</script>
-
-
 </body>
 </html>
-
-
