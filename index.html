@@ -19,13 +19,12 @@
     .btn{appearance:none;border:0;border-radius:10px;padding:12px 16px;font-weight:700;background:#111;color:#fff}
     .debug{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;border-radius:8px;font-size:12px}
     .version-tag{position:absolute;right:10px;bottom:8px;font-size:11px;opacity:.6}
-    /* Always-visible boot badge for mobile debugging */
     #bootBadge{position:fixed;left:8px;top:8px;z-index:99999;background:rgba(0,0,0,.85);color:#0f0;
       font:12px/1.2 ui-monospace,monospace;border-radius:8px;padding:6px 8px;pointer-events:none}
   </style>
 
-  <!-- External CSS (must exist as 'styles.css' in repo root) -->
-  <link rel="stylesheet" href="styles.css?v=2025-10-24g" />
+  <!-- External CSS -->
+  <link rel="stylesheet" href="styles.css?v=2025-10-24h" />
 </head>
 <body>
   <div id="wrap">
@@ -67,48 +66,66 @@
   <!-- Boot badge -->
   <div id="bootBadge">CSS: checking…<br>JS: loading…</div>
 
-  <!-- p5.js must load BEFORE app.js -->
+  <!-- p5.js (must load BEFORE app.js) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- App JS (must exist as 'app.js' in repo root). onload/onerror update the badge even if parsing fails -->
-  <script src="app.js?v=2025-10-24g"
-          onload="(function(){var b=document.getElementById('bootBadge'); if(b){ b.innerHTML=b.innerHTML.replace('JS: loading…','JS: loaded'); }})()"
-          onerror="(function(){var b=document.getElementById('bootBadge'); if(b){ b.innerHTML=b.innerHTML.replace('JS: loading…','JS: ERROR (load)'); }})()"
-          defer></script>
-
-  <!-- Boot helpers: check CSS status; watchdog fetch for JS if onerror didn't fire -->
+  <!-- EARLY BOOTSTRAP: capture first tap & show on-screen debug -->
   <script>
     (function(){
-      var b = document.getElementById('bootBadge');
-      // Report CSS fetch status (works on iPhone)
+      var badge = document.getElementById('bootBadge');
+      function setBadge(line2){ if(!badge) return; var l1=(badge.innerHTML.split('<br>')[0]||'CSS:?'); badge.innerHTML=l1+'<br>'+line2; }
+      // Show CSS status
       try {
-        fetch('styles.css?v=2025-10-24g', {cache:'no-store'}).then(function(r){
-          if (b) b.innerHTML = 'CSS: ' + r.status + (r.ok?' OK':' ERROR') + '<br>' + (b.innerHTML.split('<br>')[1]||'JS: loading…');
-        }).catch(function(){ if (b) b.innerHTML = 'CSS: ERROR<br>JS: loading…'; });
-      } catch(_){}
+        fetch('styles.css?v=2025-10-24h',{cache:'no-store'}).then(function(r){
+          if(badge) badge.innerHTML = 'CSS: '+r.status+(r.ok?' OK':' ERROR')+'<br>JS: loading…';
+        }).catch(function(){ if(badge) badge.innerHTML = 'CSS: ERROR<br>JS: loading…'; });
+      }catch(_){}
 
-      // If app.js never calls __bootJSReady within ~3s, fetch it to see its status
-      setTimeout(function(){
-        if (!window.__jsAnnounced) {
-          try {
-            fetch('app.js?v=2025-10-24g', {cache:'no-store'})
-              .then(function(r){
-                if (b) b.innerHTML = (b.innerHTML.split('<br>')[0]||'CSS:?') + '<br>JS: ' + r.status + (r.ok?' OK (fetch)':' ERROR');
-              })
-              .catch(function(){ if (b) b.innerHTML = (b.innerHTML.split('<br>')[0]||'CSS:?') + '<br>JS: ERROR (fetch)'; });
-          } catch(_){}
+      // Early tap capture (before app.js) + visible ping
+      function earlyStart(ev){
+        try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){}
+        window.__queuedBegin = true;
+        setBadge('JS: OK (tap)');
+        if (typeof window.beginGame === 'function'){
+          try { window.beginGame(ev); } catch(e){ setBadge('JS: handler error'); }
         }
-      }, 3000);
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        var btn = document.getElementById('beginBtn');
+        var splash = document.getElementById('splash');
+        if(btn){
+          btn.addEventListener('click', earlyStart, {passive:false});
+          btn.addEventListener('touchstart', earlyStart, {passive:false});
+          btn.addEventListener('pointerdown', earlyStart, {passive:false});
+        }
+        if(splash){
+          var bg = function(e){ if(e.target===splash) earlyStart(e); };
+          splash.addEventListener('click', bg, {passive:false});
+          splash.addEventListener('touchstart', bg, {passive:false});
+          splash.addEventListener('pointerdown', bg, {passive:false});
+        }
+      });
 
-      // Called by app.js on first line (parse success) and again when fully booted
+      // Notified by app.js
       window.__bootJSReady = function(phase){
         window.__jsAnnounced = true;
-        if (!b) return;
-        var lines = b.innerHTML.split('<br>');
-        lines[1] = 'JS: OK ' + (phase || '');
-        b.innerHTML = lines.join('<br>');
+        if(!badge) return;
+        var lines = badge.innerHTML.split('<br>');
+        lines[1] = 'JS: OK '+(phase||'');
+        badge.innerHTML = lines.join('<br>');
+        // If user already tapped, replay once beginGame exists
+        if (window.__queuedBegin && typeof window.beginGame === 'function'){
+          try { window.beginGame(); } catch(_) {}
+          window.__queuedBegin = false;
+        }
       };
     })();
   </script>
+
+  <!-- App JS -->
+  <script src="app.js?v=2025-10-24h"
+          onload="(function(){var b=document.getElementById('bootBadge'); if(b){ b.innerHTML=b.innerHTML.replace('JS: loading…','JS: loaded'); }})()"
+          onerror="(function(){var b=document.getElementById('bootBadge'); if(b){ b.innerHTML=b.innerHTML.replace('JS: loading…','JS: ERROR (load)'); }})()"
+          defer></script>
 </body>
 </html>

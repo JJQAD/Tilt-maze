@@ -3,7 +3,7 @@ if (typeof window !== 'undefined' && typeof window.__bootJSReady === 'function')
   window.__bootJSReady('parse');
 }
 
-var VERSION = 'v2025-10-24g';
+var VERSION = 'v2025-10-24h';
 
 // =============== Responsive sizing ===============
 var CAN_W = 400, CAN_H = 700;
@@ -28,6 +28,13 @@ var centerMask; // collision mask for ball center
 function isIOS(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints>1);
+}
+function badgeNote(msg){
+  var b=document.getElementById('bootBadge');
+  if(!b) return;
+  var l=b.innerHTML.split('<br>');
+  l[1]='JS: '+msg;
+  b.innerHTML=l.join('<br>');
 }
 
 // =============== Maze generation (Wilson) ===============
@@ -110,7 +117,7 @@ function generateMaze(cols, rows){
   return {passages:passages, start:{i:ai,j:aj}, end:{i:bi,j:bj}, cols:W, rows:H};
 }
 
-// =============== Geometry: fill canvas with minimal pixel margins ===============
+// =============== Geometry ===============
 function buildMazeGeometry(){
   var target = (difficulty==='easy') ? 54 : (difficulty==='hard' ? 28 : 36);
 
@@ -158,6 +165,7 @@ function buildMazeGeometry(){
   buildCollisionMask();
 }
 
+// =============== Collision Mask ===============
 function buildCollisionMask(){
   var cCanvas = document.createElement('canvas');
   cCanvas.width = CAN_W; cCanvas.height = CAN_H;
@@ -173,7 +181,6 @@ function buildCollisionMask(){
   }
   centerMask = cctx.getImageData(0,0,CAN_W,CAN_H).data;
 }
-
 function pointInsideCenterMask(x,y){
   var ix = Math.max(0, Math.min(CAN_W-1, Math.round(x)));
   var iy = Math.max(0, Math.min(CAN_H-1, Math.round(y)));
@@ -209,8 +216,8 @@ function setup(){
   var sv = document.getElementById('splashVersion'); if(sv) sv.textContent = VERSION;
   var vt = document.getElementById('verTag'); if(vt) vt.textContent = VERSION;
 
-  // First gesture fallback (iOS)
-  function firstGesture(ev){ beginGame(ev); cleanup(); }
+  // First gesture fallback (iOS); also visible badge update
+  function firstGesture(ev){ badgeNote('tap-anywhere'); beginGame(ev); cleanup(); }
   function cleanup(){
     document.removeEventListener('touchstart', firstGesture, true);
     document.removeEventListener('pointerdown', firstGesture, true);
@@ -220,7 +227,6 @@ function setup(){
   document.addEventListener('pointerdown', firstGesture, true);
   document.addEventListener('mousedown', firstGesture, true);
 
-  // Announce full boot
   if (typeof window.__bootJSReady === 'function') window.__bootJSReady('boot');
 }
 
@@ -283,21 +289,28 @@ function startOrientation(){
 
 // =============== Splash / Start / Congrats ===============
 async function beginGame(ev){
-  if (started) return;
+  if (started) { badgeNote('already-started'); return; }
   started = true;
   try { if(ev && ev.preventDefault) ev.preventDefault(); if(ev && ev.stopPropagation) ev.stopPropagation(); } catch(_){}
+  badgeNote('start-handler');
+
   var needsPerm = isIOS()
     && typeof DeviceOrientationEvent !== 'undefined'
     && typeof DeviceOrientationEvent.requestPermission === 'function';
   try{
-    if (needsPerm) { await askPermission(); }
-    else { startOrientation(); }
-  } catch(e){ console.warn('permission error', e); }
-  buildMazeGeometry();
+    if (needsPerm) { badgeNote('ask-permission'); await askPermission(); }
+    else { badgeNote('start-orientation'); startOrientation(); }
+  } catch(e){ console.warn('permission error', e); badgeNote('perm-error'); }
+
+  buildMazeGeometry(); badgeNote('built-maze');
+
   var splash = document.getElementById('splash');
   if (splash){
     splash.classList.add('fade-out');
     splash.setAttribute('aria-hidden','true');
+    badgeNote('faded-splash');
+  } else {
+    badgeNote('no-splash');
   }
 }
 window.beginGame = beginGame;
@@ -311,17 +324,21 @@ function initSplash(){
     && typeof DeviceOrientationEvent.requestPermission === 'function';
 
   async function startNow(e){
-    if (started) return;
+    if (started) { badgeNote('already-started'); return; }
     started = true;
     try { if(e && e.preventDefault) e.preventDefault(); if(e && e.stopPropagation) e.stopPropagation(); } catch(_){}
+    badgeNote('startNow');
+
     try{
-      if (needsPerm) { await askPermission(); }
-      else { startOrientation(); }
-    } catch(err){ console.warn('permission error', err); }
-    buildMazeGeometry();
+      if (needsPerm) { badgeNote('ask-permission'); await askPermission(); }
+      else { badgeNote('start-orientation'); startOrientation(); }
+    } catch(err){ console.warn('permission error', err); badgeNote('perm-error'); }
+
+    buildMazeGeometry(); badgeNote('built-maze');
     if (splash){
       splash.classList.add('fade-out');
       splash.setAttribute('aria-hidden','true');
+      badgeNote('faded-splash');
     }
   }
 
@@ -357,8 +374,8 @@ function showCongrats(){
   }
   var eBtn=document.getElementById('againEasy'), mBtn=document.getElementById('againMed'), hBtn=document.getElementById('againHard');
   if(eBtn) eBtn.onclick = hook('easy');
-  if(mBtn) mBtn.onclick = hook('medium');
-  if(hBtn) hBtn.onclick = hook('hard');
+  if(mBtn) mBtn.onclick  = hook('medium');
+  if(hBtn) hBtn.onclick  = hook('hard');
 }
 
 // =============== Portrait guard ===============
