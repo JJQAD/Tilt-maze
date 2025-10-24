@@ -336,18 +336,39 @@ function initSplash(){
   const splash = document.getElementById('splash');
   const btn = document.getElementById('beginBtn');
 
-  // Redundant bindings on the button (guarded by `started` flag)
-  const once = { passive:false };
-  btn.addEventListener('pointerdown', beginGame, once);
-  btn.addEventListener('touchstart', beginGame, once);
-  btn.addEventListener('click', beginGame, once);
+  // Detect if iOS requires explicit permission prompts
+  const needsPerm = isIOS()
+    && typeof DeviceOrientationEvent !== 'undefined'
+    && typeof DeviceOrientationEvent.requestPermission === 'function';
 
-  // Tap anywhere on the overlay background
-  const bgStart = (e)=>{ if (e.target===splash) beginGame(e); };
-  splash.addEventListener('pointerdown', bgStart, {passive:false});
-  splash.addEventListener('touchstart',  bgStart, {passive:false});
-  splash.addEventListener('click',       bgStart);
+  // Single, explicit handler (mirrors v12 "working" behavior)
+  const startNow = async (e)=>{
+    if (started) return;
+    started = true;
+    try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
+    try{
+      if (needsPerm) { await askPermission(); }
+      else { startOrientation(); }
+    } catch(err){ console.warn('permission error', err); }
+    buildMazeGeometry();
+    splash.classList.add('fade-out');
+    splash.setAttribute('aria-hidden','true');
+  };
+
+  // Button: click & touchstart (no inline attributes needed)
+  if (btn){
+    btn.addEventListener('click',      startNow, {once:true, passive:false});
+    btn.addEventListener('touchstart', startNow, {once:true, passive:false});
+    btn.addEventListener('pointerdown',startNow, {once:true, passive:false});
+  }
+
+  // Background tap to start as well (optional)
+  const bgStart = (e)=>{ if (e.target===splash) startNow(e); };
+  splash.addEventListener('click',       bgStart, {passive:false, once:true});
+  splash.addEventListener('touchstart',  bgStart, {passive:false, once:true});
+  splash.addEventListener('pointerdown', bgStart, {passive:false, once:true});
 }
+
 
 function showCongrats(){
   const cg = document.getElementById('congrats');
@@ -380,4 +401,5 @@ function updateOrientationGuard(){
   if (window.matchMedia('(orientation: landscape)').matches){ rot.classList.add('show'); }
   else { rot.classList.remove('show'); }
 }
+
 
