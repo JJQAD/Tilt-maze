@@ -22,7 +22,7 @@
   </style>
 
   <!-- External CSS (overrides/extends fallback). Relative path + cache-bust. -->
-  <link rel="stylesheet" href="styles.css?v=2025-10-24d" />
+  <link rel="stylesheet" href="styles.css?v=2025-10-24e" />
 </head>
 <body>
   <div id="wrap">
@@ -65,9 +65,48 @@
     <div id="verTag" class="version-tag"></div>
   </div>
 
+  <!-- BOOTSTRAP: capture first user tap/click and replay once app.js is ready -->
+  <script>
+    (function(){
+      // Record a "start requested" flag if the user taps before app.js is ready.
+      function requestStart(ev){
+        try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){}
+        window.__queuedBegin = true;
+        if (typeof window.beginGame === 'function') {
+          // If app.js is already there, go now.
+          try { window.beginGame(ev); } catch(e){ console.warn('beginGame error (pre-app hook):', e); }
+        }
+      }
+      // Attach to the button and splash background ASAP.
+      document.addEventListener('DOMContentLoaded', function(){
+        var btn = document.getElementById('beginBtn');
+        var splash = document.getElementById('splash');
+        if (btn){
+          btn.addEventListener('click', requestStart, {passive:false});
+          btn.addEventListener('touchstart', requestStart, {passive:false});
+          btn.addEventListener('pointerdown', requestStart, {passive:false});
+        }
+        if (splash){
+          splash.addEventListener('click', function(e){ if(e.target===splash) requestStart(e); }, {passive:false});
+          splash.addEventListener('touchstart', function(e){ if(e.target===splash) requestStart(e); }, {passive:false});
+          splash.addEventListener('pointerdown', function(e){ if(e.target===splash) requestStart(e); }, {passive:false});
+        }
+      });
+
+      // After app.js loads, if a tap already happened, replay it.
+      window.__replayQueuedBegin = function(){
+        if (window.__queuedBegin && typeof window.beginGame === 'function'){
+          try { window.beginGame(); } catch(e){ console.warn('beginGame error (replay):', e); }
+          window.__queuedBegin = false;
+        }
+      };
+    })();
+  </script>
+
   <!-- p5.js must load BEFORE app.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
   <!-- App JS (relative path + cache-bust). Ensure app.js defines window.beginGame -->
-  <script src="app.js?v=2025-10-24d"></script>
+  <script src="app.js?v=2025-10-24e" onload="window.__replayQueuedBegin && window.__replayQueuedBegin()"></script>
 </body>
 </html>
